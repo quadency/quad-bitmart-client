@@ -6,7 +6,7 @@ Client to allow easier access to Bitmart's websocket api.
 ## Websocket Example
 
 ```
-import okex from 'quad-bitmart-client';
+import bitmart from 'quad-bitmart-client';
 
 // For authenticated endpoints, provide object of credentials.  
 // This is not required for public rest endpoints

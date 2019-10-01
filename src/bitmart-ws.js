@@ -1,11 +1,12 @@
 import WebSocket from 'ws';
 import axios from 'axios';
 import pako from 'pako';
-import { CHANNELS } from './utils';
+import { CHANNELS, WEBSOCKET_CODES, WEBSOCKET_STATUS } from './utils';
 
 
 const WEBSOCKET_URI = 'wss://ws-manager-compress.bitmart.com/';
 const MAPPINGS_ENDPOINT = 'https://www.bitmart.com/api/market_trade_mappings_front';
+const PRECISIONS_ENDPOINT = 'https://openapi.bitmart.com/v2/symbols_details';
 const EXCHANGE = 'BITMART';
 
 class WebsocketClient {
@@ -14,16 +15,27 @@ class WebsocketClient {
       this[key] = userConfig[key];
     });
     this.correlationId = correlationId;
-    this.SYMBOL_NAME_MAPPING = {};
+    this.SYMBOL_NAME_MAP = {};
+    this.SYMBOL_PRECISIONS_MAP = {};
   }
 
   async populateSymbolMap() {
-    if (!Object.keys(this.SYMBOL_NAME_MAPPING).length) {
+    if (!Object.keys(this.SYMBOL_NAME_MAP).length) {
       const response = await axios(MAPPINGS_ENDPOINT);
-      this.SYMBOL_NAME_MAPPING = response.data.data.result.reduce((acc, obj) => {
+      this.SYMBOL_NAME_MAP = response.data.data.result.reduce((acc, obj) => {
         obj.mappingList.forEach((pairObj) => {
           acc[pairObj.symbol] = pairObj.name;
         });
+        return acc;
+      }, {});
+    }
+  }
+
+  async populatePrecisionsMapping() {
+    if (!Object.keys(this.SYMBOL_PRECISIONS_MAP).length) {
+      const response = await axios(PRECISIONS_ENDPOINT);
+      this.SYMBOL_PRECISIONS_MAP = response.data.reduce((acc, obj) => {
+        acc[obj.id] = obj.price_max_precision;
         return acc;
       }, {});
     }
@@ -89,37 +101,79 @@ class WebsocketClient {
     });
 
     this.subscribe(subscriptions, (msg) => {
-      const { subscribe, symbol, data } = msg;
-      if (subscribe === CHANNEL) {
+      const {
+        subscribe, symbol, data: tick, code,
+      } = msg;
+      if (subscribe === CHANNEL && code === WEBSOCKET_CODES.SUCCESS) {
         // conditional in case bitmart decides to change how they map symbols
-        callback(Object.assign(data, { pair: this.SYMBOL_NAME_MAPPING[symbol] ? this.SYMBOL_NAME_MAPPING[symbol] : symbol }));
+        callback(Object.assign(tick, { pair: this.SYMBOL_NAME_MAP[symbol] ? this.SYMBOL_NAME_MAP[symbol] : symbol }));
+        return;
       }
+      console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} subscription error: ${WEBSOCKET_STATUS[code]}`);
     });
   }
 
   subscribeTrades(pairs, callback) {
-    const CHANNEL = CHANNELS.TRADE;
-    if (!pairs) {
-      throw new Error('must provide pairs to subscribe to');
-    }
-    const subscriptions = pairs.map((pair) => {
-      const [base, quote] = pair.split('/');
-      return {
-        subscribe: CHANNEL,
-        symbol: `${base}_${quote}`,
-        precision: 0,
-        local: 'en_US',
-      };
-    });
-
-    this.subscribe(subscriptions, (msg) => {
-      const {
-        subscribe, symbol, data, firstSubscribe,
-      } = msg;
-      if (subscribe === CHANNEL) {
-        // conditional in case bitmart decides to change how they map symbols
-        callback(Object.assign(data, { firstSubscribe, pair: this.SYMBOL_NAME_MAPPING[symbol] ? this.SYMBOL_NAME_MAPPING[symbol] : symbol }));
+    this.populatePrecisionsMapping().then(() => {
+      const CHANNEL = CHANNELS.TRADE;
+      if (!pairs) {
+        throw new Error('must provide pairs to subscribe to');
       }
+      const subscriptions = pairs.map((pair) => {
+        const [base, quote] = pair.split('/');
+        return {
+          subscribe: CHANNEL,
+          symbol: `${base}_${quote}`,
+          precision: this.SYMBOL_PRECISIONS_MAP[`${base}_${quote}`],
+          local: 'en_US',
+        };
+      });
+
+      this.subscribe(subscriptions, (msg) => {
+        const {
+          subscribe, symbol, data: trades, firstSubscribe, code,
+        } = msg;
+        if (subscribe === CHANNEL && code === WEBSOCKET_CODES.SUCCESS) {
+          // conditional in case bitmart decides to change how they map symbols
+          callback(Object.assign(trades, {
+            firstSubscribe,
+            pair: this.SYMBOL_NAME_MAP[symbol] ? this.SYMBOL_NAME_MAP[symbol] : symbol,
+          }));
+          return;
+        }
+        console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} subscription error: ${WEBSOCKET_STATUS[code]}`);
+      });
+    });
+  }
+
+  subscribeOrders(pairs, callback) {
+    this.populatePrecisionsMapping().then(() => {
+      const CHANNEL = CHANNELS.ORDER;
+      if (!pairs) {
+        throw new Error('must provide pairs to subscribe to');
+      }
+
+      const subscriptions = pairs.map((pair) => {
+        const [base, quote] = pair.split('/');
+        return {
+          subscribe: CHANNEL,
+          symbol: `${base}_${quote}`,
+          precision: this.SYMBOL_PRECISIONS_MAP[`${base}_${quote}`],
+          local: 'en_US',
+        };
+      });
+
+      this.subscribe(subscriptions, (msg) => {
+        const {
+          subscribe, symbol, data: orders, code,
+        } = msg;
+        if (subscribe === CHANNEL && code === WEBSOCKET_CODES.SUCCESS) {
+          // conditional in case bitmart decides to change how they map symbols
+          callback(Object.assign(orders, { pair: this.SYMBOL_NAME_MAP[symbol] ? this.SYMBOL_NAME_MAP[symbol] : symbol }));
+          return;
+        }
+        console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} subscription error: ${WEBSOCKET_STATUS[code]}`);
+      });
     });
   }
 }
