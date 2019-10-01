@@ -11,7 +11,8 @@ const COMMON_CURRENCIES = { // gets extended/overwritten in subclasses
   BCHSV: 'BSV'
 };
 const CHANNELS = {
-  PRICE: 'price'
+  PRICE: 'price',
+  TRADE: 'trade'
 };
 
 exports.COMMON_CURRENCIES = COMMON_CURRENCIES;

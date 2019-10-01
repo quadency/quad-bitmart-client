@@ -7,6 +7,7 @@ const COMMON_CURRENCIES = { // gets extended/overwritten in subclasses
 };
 const CHANNELS = {
   PRICE: 'price',
+  TRADE: 'trade',
 };
 
 export { COMMON_CURRENCIES, CHANNELS };

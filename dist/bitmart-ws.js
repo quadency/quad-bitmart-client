@@ -59,7 +59,6 @@ class WebsocketClient {
       socket.onopen = () => {
         console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} connection open`);
         subscription.forEach(sub => {
-          console.log('sub', JSON.stringify(sub));
           socket.send(JSON.stringify(sub));
         });
 
@@ -115,7 +114,35 @@ class WebsocketClient {
     this.subscribe(subscriptions, msg => {
       const { subscribe, symbol, data } = msg;
       if (subscribe === CHANNEL) {
-        callback(Object.assign(data, { pair: this.SYMBOL_NAME_MAPPING[symbol] }));
+        // conditional in case bitmart decides to change how they map symbols
+        callback(Object.assign(data, { pair: this.SYMBOL_NAME_MAPPING[symbol] ? this.SYMBOL_NAME_MAPPING[symbol] : symbol }));
+      }
+    });
+  }
+
+  subscribeTrades(pairs, callback) {
+    const CHANNEL = _utils.CHANNELS.TRADE;
+    if (!pairs) {
+      throw new Error('must provide pairs to subscribe to');
+    }
+    const subscriptions = pairs.map(pair => {
+      const [base, quote] = pair.split('/');
+      return {
+        subscribe: CHANNEL,
+        symbol: `${base}_${quote}`,
+        precision: 0,
+        local: 'en_US'
+      };
+    });
+
+    this.subscribe(subscriptions, msg => {
+      console.log('msg', JSON.stringify(msg));
+      const {
+        subscribe, symbol, data, firstSubscribe
+      } = msg;
+      if (subscribe === CHANNEL) {
+        // conditional in case bitmart decides to change how they map symbols
+        callback(Object.assign(data, { firstSubscribe, pair: this.SYMBOL_NAME_MAPPING[symbol] ? this.SYMBOL_NAME_MAPPING[symbol] : symbol }));
       }
     });
   }
