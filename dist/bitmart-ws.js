@@ -136,7 +136,6 @@ class WebsocketClient {
     });
 
     this.subscribe(subscriptions, msg => {
-      console.log('msg', JSON.stringify(msg));
       const {
         subscribe, symbol, data, firstSubscribe
       } = msg;
