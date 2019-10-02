@@ -177,6 +177,25 @@ class WebsocketClient {
     });
   }
 
+  addToOrdersSubscription(pairs) {
+    this.populatePrecisionsMapping().then(() => {
+      const CHANNEL = CHANNELS.ORDER;
+      if (!pairs) {
+        throw new Error('must provide pairs to subscribe to');
+      }
+      const subscriptions = pairs.map((pair) => {
+        const [base, quote] = pair.split('/');
+        return {
+          subscribe: CHANNEL,
+          symbol: `${base}_${quote}`,
+          precision: this.SYMBOL_PRECISIONS_MAP[`${base}_${quote}`],
+          local: 'en_US',
+        };
+      });
+      this.addToSubscription(subscriptions);
+    });
+  }
+
   subscribeOrders(pairs, callback) {
     this.populatePrecisionsMapping().then(() => {
       const CHANNEL = CHANNELS.ORDER;
