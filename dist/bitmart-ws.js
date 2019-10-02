@@ -35,6 +35,7 @@ class WebsocketClient {
     this.correlationId = correlationId;
     this.SYMBOL_NAME_MAP = {};
     this.SYMBOL_PRECISIONS_MAP = {};
+    this.socket = null;
   }
 
   populateSymbolMap() {
@@ -67,26 +68,37 @@ class WebsocketClient {
     })();
   }
 
+  addToSubscription(subscription) {
+    if (this.socket && this.socket.readyState === this.socket.OPEN) {
+      subscription.forEach(sub => {
+        this.socket.send(JSON.stringify(sub));
+      });
+      return;
+    }
+    console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} cannot add to subscription, connection not open`);
+  }
+
   subscribe(subscription, callback) {
     this.populateSymbolMap().then(() => {
-      const socket = new _ws2.default(WEBSOCKET_URI);
+      this.socket = new _ws2.default(WEBSOCKET_URI);
+
       let pingInterval;
 
-      socket.onopen = () => {
+      this.socket.onopen = () => {
         console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} connection open`);
         subscription.forEach(sub => {
-          socket.send(JSON.stringify(sub));
+          this.socket.send(JSON.stringify(sub));
         });
 
         pingInterval = setInterval(() => {
-          if (socket.readyState === socket.OPEN) {
+          if (this.socket.readyState === this.socket.OPEN) {
             const pingMessage = { subscribe: 'ping' };
-            socket.send(JSON.stringify(pingMessage));
+            this.socket.send(JSON.stringify(pingMessage));
           }
         }, 5000);
       };
 
-      socket.onmessage = message => {
+      this.socket.onmessage = message => {
         const payload = _pako2.default.inflateRaw(message.data, { to: 'string' });
         if (!payload) {
           console.log('empty payload, skipping...');
@@ -96,19 +108,19 @@ class WebsocketClient {
         callback(payloadObj);
       };
 
-      socket.onclose = () => {
+      this.socket.onclose = () => {
         console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} connection closed`);
         clearInterval(pingInterval);
       };
 
-      socket.onerror = error => {
+      this.socket.onerror = error => {
         console.log(`[correlationId=${this.correlationId}] error with ${EXCHANGE} connection because`, error);
 
         // reconnect if error
         this.subscribe(subscription, callback);
       };
       return () => {
-        socket.close();
+        this.socket.close();
       };
     });
   }
@@ -137,6 +149,25 @@ class WebsocketClient {
         return;
       }
       console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} subscription error: ${_utils.WEBSOCKET_STATUS[code]}`);
+    });
+  }
+
+  addToTradeSubscription(pairs) {
+    this.populatePrecisionsMapping().then(() => {
+      const CHANNEL = _utils.CHANNELS.TRADE;
+      if (!pairs) {
+        throw new Error('must provide pairs to subscribe to');
+      }
+      const subscriptions = pairs.map(pair => {
+        const [base, quote] = pair.split('/');
+        return {
+          subscribe: CHANNEL,
+          symbol: `${base}_${quote}`,
+          precision: this.SYMBOL_PRECISIONS_MAP[`${base}_${quote}`],
+          local: 'en_US'
+        };
+      });
+      this.addToSubscription(subscriptions);
     });
   }
 
@@ -170,6 +201,25 @@ class WebsocketClient {
         }
         console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} subscription error: ${_utils.WEBSOCKET_STATUS[code]}`);
       });
+    });
+  }
+
+  addToOrdersSubscription(pairs) {
+    this.populatePrecisionsMapping().then(() => {
+      const CHANNEL = _utils.CHANNELS.ORDER;
+      if (!pairs) {
+        throw new Error('must provide pairs to subscribe to');
+      }
+      const subscriptions = pairs.map(pair => {
+        const [base, quote] = pair.split('/');
+        return {
+          subscribe: CHANNEL,
+          symbol: `${base}_${quote}`,
+          precision: this.SYMBOL_PRECISIONS_MAP[`${base}_${quote}`],
+          local: 'en_US'
+        };
+      });
+      this.addToSubscription(subscriptions);
     });
   }
 
