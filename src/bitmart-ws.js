@@ -1,12 +1,14 @@
 import WebSocket from 'ws';
 import axios from 'axios';
+import CryptoJS from 'crypto-js';
 import pako from 'pako';
 import { CHANNELS, WEBSOCKET_CODES, WEBSOCKET_STATUS } from './utils';
 
 
 const WEBSOCKET_URI = 'wss://ws-manager-compress.bitmart.com/';
 const MAPPINGS_ENDPOINT = 'https://www.bitmart.com/api/market_trade_mappings_front';
-const PRECISIONS_ENDPOINT = 'https://openapi.bitmart.com/v2/symbols_details';
+const BASE_URL = 'https://openapi.bitmart.com/v2';
+const PRECISIONS_ENDPOINT = `${BASE_URL}/symbols_details`;
 const EXCHANGE = 'BITMART';
 
 class WebsocketClient {
@@ -18,6 +20,37 @@ class WebsocketClient {
     this.SYMBOL_NAME_MAP = {};
     this.SYMBOL_PRECISIONS_MAP = {};
     this.socket = null;
+    this.accessToken = null;
+  }
+
+  async login() {
+    if (this.accessToken) {
+      return;
+    }
+    if (!this.apiKey || !this.secret || !this.apiName) {
+      throw new Error('Must provide credentials for authenticated route');
+    }
+    const message = `${this.apiKey}:${this.secret}:${this.apiName}`;
+
+    const crypt = CryptoJS.HmacSHA256(message, this.secret);
+    const signature = crypt.toString(CryptoJS.enc.HEX);
+
+    const options = {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      params: {
+        grant_type: 'client_credentials',
+        client_id: this.apiKey,
+        client_secret: signature,
+      },
+      url: `${BASE_URL}/authentication`,
+    };
+
+    const response = await axios(options);
+    const { access_token: accessToken } = response.data;
+    this.accessToken = accessToken;
   }
 
   async populateSymbolMap() {
@@ -223,6 +256,27 @@ class WebsocketClient {
           return;
         }
         console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} subscription error: ${WEBSOCKET_STATUS[code]}`);
+      });
+    });
+  }
+
+  subscribeNotify(callback) {
+    this.login().then(() => {
+      const subscription = { subscribe: 'notify', token: this.accessToken };
+      this.subscribe([subscription], (msg) => {
+        callback(msg);
+      });
+    });
+  }
+
+  subscribeUserOrders(pairs, callback) {
+    this.login().then(() => {
+      const args = pairs.map((pair) => `spot/order:${pair.replace('/', '_')}`);
+      const subscription = { op: 'subscribe', token: this.accessToken, args };
+      this.subscribe([subscription], (msg) => {
+        const callbackMessage = msg;
+        callbackMessage.trademapping_name = msg.trademapping_name.replace('_', '/');
+        callback(callbackMessage);
       });
     });
   }

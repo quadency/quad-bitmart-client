@@ -12,6 +12,10 @@ var _axios = require('axios');
 
 var _axios2 = _interopRequireDefault(_axios);
 
+var _cryptoJs = require('crypto-js');
+
+var _cryptoJs2 = _interopRequireDefault(_cryptoJs);
+
 var _pako = require('pako');
 
 var _pako2 = _interopRequireDefault(_pako);
@@ -24,7 +28,8 @@ function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, a
 
 const WEBSOCKET_URI = 'wss://ws-manager-compress.bitmart.com/';
 const MAPPINGS_ENDPOINT = 'https://www.bitmart.com/api/market_trade_mappings_front';
-const PRECISIONS_ENDPOINT = 'https://openapi.bitmart.com/v2/symbols_details';
+const BASE_URL = 'https://openapi.bitmart.com/v2';
+const PRECISIONS_ENDPOINT = `${BASE_URL}/symbols_details`;
 const EXCHANGE = 'BITMART';
 
 class WebsocketClient {
@@ -36,15 +41,50 @@ class WebsocketClient {
     this.SYMBOL_NAME_MAP = {};
     this.SYMBOL_PRECISIONS_MAP = {};
     this.socket = null;
+    this.accessToken = null;
   }
 
-  populateSymbolMap() {
+  login() {
     var _this = this;
 
     return _asyncToGenerator(function* () {
-      if (!Object.keys(_this.SYMBOL_NAME_MAP).length) {
+      if (_this.accessToken) {
+        return;
+      }
+      if (!_this.apiKey || !_this.secret || !_this.apiName) {
+        throw new Error('Must provide credentials for authenticated route');
+      }
+      const message = `${_this.apiKey}:${_this.secret}:${_this.apiName}`;
+
+      const crypt = _cryptoJs2.default.HmacSHA256(message, _this.secret);
+      const signature = crypt.toString(_cryptoJs2.default.enc.HEX);
+
+      const options = {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded'
+        },
+        params: {
+          grant_type: 'client_credentials',
+          client_id: _this.apiKey,
+          client_secret: signature
+        },
+        url: `${BASE_URL}/authentication`
+      };
+
+      const response = yield (0, _axios2.default)(options);
+      const { access_token: accessToken } = response.data;
+      _this.accessToken = accessToken;
+    })();
+  }
+
+  populateSymbolMap() {
+    var _this2 = this;
+
+    return _asyncToGenerator(function* () {
+      if (!Object.keys(_this2.SYMBOL_NAME_MAP).length) {
         const response = yield (0, _axios2.default)(MAPPINGS_ENDPOINT);
-        _this.SYMBOL_NAME_MAP = response.data.data.result.reduce(function (acc, obj) {
+        _this2.SYMBOL_NAME_MAP = response.data.data.result.reduce(function (acc, obj) {
           obj.mappingList.forEach(function (pairObj) {
             acc[pairObj.symbol] = pairObj.name;
           });
@@ -55,12 +95,12 @@ class WebsocketClient {
   }
 
   populatePrecisionsMapping() {
-    var _this2 = this;
+    var _this3 = this;
 
     return _asyncToGenerator(function* () {
-      if (!Object.keys(_this2.SYMBOL_PRECISIONS_MAP).length) {
+      if (!Object.keys(_this3.SYMBOL_PRECISIONS_MAP).length) {
         const response = yield (0, _axios2.default)(PRECISIONS_ENDPOINT);
-        _this2.SYMBOL_PRECISIONS_MAP = response.data.reduce(function (acc, obj) {
+        _this3.SYMBOL_PRECISIONS_MAP = response.data.reduce(function (acc, obj) {
           acc[obj.id] = obj.price_max_precision;
           return acc;
         }, {});
@@ -250,6 +290,27 @@ class WebsocketClient {
           return;
         }
         console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} subscription error: ${_utils.WEBSOCKET_STATUS[code]}`);
+      });
+    });
+  }
+
+  subscribeNotify(callback) {
+    this.login().then(() => {
+      const subscription = { subscribe: 'notify', token: this.accessToken };
+      this.subscribe([subscription], msg => {
+        callback(msg);
+      });
+    });
+  }
+
+  subscribeUserOrders(pairs, callback) {
+    this.login().then(() => {
+      const args = pairs.map(pair => `spot/order:${pair.replace('/', '_')}`);
+      const subscription = { op: 'subscribe', token: this.accessToken, args };
+      this.subscribe([subscription], msg => {
+        const callbackMessage = msg;
+        callbackMessage.trademapping_name = msg.trademapping_name.replace('_', '/');
+        callback(callbackMessage);
       });
     });
   }
