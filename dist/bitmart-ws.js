@@ -144,6 +144,7 @@ class WebsocketClient {
           console.log('empty payload, skipping...');
           return;
         }
+        console.log('payload', payload);
         const payloadObj = JSON.parse(payload);
         callback(payloadObj);
       };
@@ -313,6 +314,15 @@ class WebsocketClient {
         callback(callbackMessage);
       });
     });
+  }
+
+  unsubscribe() {
+    if (this.socket) {
+      if (this.socket.readyState === this.socket.OPEN) {
+        this.socket.close();
+      }
+      this.socket = null;
+    }
   }
 }
 
