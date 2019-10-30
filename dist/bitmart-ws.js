@@ -317,7 +317,7 @@ class WebsocketClient {
 
   unsubscribe() {
     if (this.socket) {
-      if (this.socket.readyState === this.socket.OPEN) {
+      if (this.socket && this.socket.readyState === this.socket.OPEN) {
         this.socket.close();
       }
       this.socket = null;
