@@ -276,7 +276,7 @@ class WebsocketClient {
       const subscription = { op: 'subscribe', token: this.accessToken, args };
       this.subscribe([subscription], (msg) => {
         const callbackMessage = msg;
-        callbackMessage.trademapping_name = msg.trademapping_name.replace('_', '/');
+        callbackMessage.data.trademapping_name = msg.data.trademapping_name.replace('_', '/');
         callback(callbackMessage);
       });
     });
