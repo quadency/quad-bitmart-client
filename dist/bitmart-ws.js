@@ -144,7 +144,6 @@ class WebsocketClient {
           console.log('empty payload, skipping...');
           return;
         }
-        console.log('payload', payload);
         const payloadObj = JSON.parse(payload);
         callback(payloadObj);
       };
