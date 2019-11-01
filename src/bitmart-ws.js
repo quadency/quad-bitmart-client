@@ -98,7 +98,7 @@ class WebsocketClient {
         });
 
         pingInterval = setInterval(() => {
-          if (this.socket.readyState === this.socket.OPEN) {
+          if (this.socket && this.socket.readyState === this.socket.OPEN) {
             const pingMessage = { subscribe: 'ping' };
             this.socket.send(JSON.stringify(pingMessage));
           }
