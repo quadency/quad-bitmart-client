@@ -154,7 +154,7 @@ class WebsocketClient {
         callback(Object.assign(tick, { pair: this.SYMBOL_NAME_MAP[symbol] ? this.SYMBOL_NAME_MAP[symbol] : symbol }));
         return;
       }
-      console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} subscription error: ${WEBSOCKET_STATUS[code]}`);
+      console.log(`[correlationId=${this.correlationId}] ${EXCHANGE} subscription error with ${symbol}: ${WEBSOCKET_STATUS[code]}`);
     });
   }
 
